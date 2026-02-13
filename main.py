@@ -2,7 +2,15 @@ import yt_dlp
 import tkinter
 import os
 import sys
-from tkinter import PhotoImage, filedialog
+from tkinter import PhotoImage, filedialog, ttk
+import threading
+
+def start_download_thread():
+    # Butonu geçici olarak devre dışı bırakalım ki üst üste basılmasın
+    download_button.config(state="disabled")
+    t = threading.Thread(target=download_youtube_video)
+    t.daemon = True # Program kapanırsa indirme de dursun
+    t.start()
 
 def center_screen(window):
     width = 400
@@ -58,13 +66,28 @@ url_entry.pack(pady=(5,0))
 def update_text(word):
     str_var.set(word)
 
+def progress_hook(d):
+    if d['status'] == 'downloading':
+        # Yüzde bilgisini alıp temizliyoruz
+        p = d.get('_percent_str', '0%').replace('%','')
+        try:
+            current_percent = float(p)
+            progress_bar['value'] = current_percent
+            # Yüzdeyi status_label'da da gösterebiliriz
+            status_label.config(text=f"Downloading... %{current_percent:.1f}")
+            screen.update_idletasks()
+        except ValueError:
+            pass
+    if d['status'] == 'finished':
+        progress_bar['value'] = 100
+
 def download_youtube_video():
     url = url_entry.get()
     ydl_opts = {
         # 'bestvideo+bestaudio' FFmpeg yüklü olduğu için artık sorunsuz çalışacak
         # Bu satır 1080p, 2K veya 4K hangisi varsa onu indirir
-        'format': 'bestvideo+bestaudio/best',
-        ##'format': 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best', eğer üstteki line çalışmazsa bunu kullan
+        #'format': 'bestvideo+bestaudio/best',
+        'format': 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best',
 
         # Çıktı dosyasının formatı mp4 olsun (birleştirme sonrası)
         'merge_output_format': 'mp4',
@@ -72,6 +95,8 @@ def download_youtube_video():
         # İlerleme durumunu terminalde gösterir
         'quiet': False,
         'no_warnings': False,
+        'progress_hooks': [progress_hook],
+        'noplaylist': True,
     }
     if target_dir != "":
         ydl_opts['outtmpl'] = os.path.join(target_dir, '%(title)s.%(ext)s')
@@ -95,12 +120,17 @@ def download_youtube_video():
 
     except Exception as e:
         print(f"An error occurred: {e}")
+    finally:
+        download_button.config(state="normal")  # Hata olsa da olmasa da buton geri gelsin
 
-download_button = tkinter.Button(text="Download", width=18, height=1, font=("Arial Bold", 8), command=download_youtube_video)
+download_button = tkinter.Button(text="Download", width=18, height=1, font=("Arial Bold", 8), command=start_download_thread)
 download_button.pack(pady=(20,5))
 
 status_label = tkinter.Label(font=("Arial Bold", 10, "bold"))
 status_label.pack(pady=(10,5))
+
+progress_bar = ttk.Progressbar(screen, orient="horizontal", length=250, mode="determinate")
+progress_bar.pack(pady=(5, 0))
 
 center_screen(screen)
 screen.mainloop()
